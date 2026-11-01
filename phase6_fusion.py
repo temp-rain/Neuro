@@ -24,9 +24,8 @@ TARGETS = {
     "repetitive_behaviour": "y_repetitive_behaviour",
 }
 
-# Maxima from the Phase-5 M-CHAT-R axis weights.  They normalize its contribution
-# to 0-1 before blending it with the corresponding XGBoost probability.
-QUESTIONNAIRE_AXIS_MAX = {"sc": 12.0, "ar": 5.0, "sl": 3.0, "rb": 2.0}
+# The dashboard exports normalized Phase-5 axis scores (0-1).
+QUESTIONNAIRE_AXIS_MAX = {"sc": 1.0, "ar": 1.0, "sl": 1.0, "rb": 1.0}
 QUESTIONNAIRE_FOR_TARGET = {
     "social_communication": "sc",
     "attention_regulation": "ar",
@@ -175,8 +174,12 @@ def predict(fusion_row: pd.DataFrame, model_dir: str | Path, threshold: float = 
         axis = QUESTIONNAIRE_FOR_TARGET[risk_name]
         q_value = _finite(fusion_row.iloc[0].get(f"q_q_axis_{axis}", 0.0))
         questionnaire_probability = float(np.clip(q_value / QUESTIONNAIRE_AXIS_MAX[axis], 0, 1))
-        # The Phase-5 recommendation: clinically validated questionnaire carries 40%.
-        final = 0.60 * model_probability + 0.40 * questionnaire_probability
+        # The clinically validated questionnaire carries the greater 60% weight.
+        final = 0.40 * model_probability + 0.60 * questionnaire_probability
+        completed = int(_finite(fusion_row.iloc[0].get("q_questionnaire_completed", 0)))
+        total = _finite(fusion_row.iloc[0].get("q_mchatr_total", 0.0))
+        if completed and total == 0:
+            final = 0.0
         output[f"{risk_name}_risk"] = round(final, 4)
         output[f"{risk_name}_screen_positive"] = int(final >= threshold)
     total = _finite(fusion_row.iloc[0].get("q_mchatr_total", 0.0))

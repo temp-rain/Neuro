@@ -168,10 +168,20 @@ def prototype_domain_scores(features: dict, questionnaire: dict | None = None) -
     """Transparent college-demo scores; replace with Phase 6 XGBoost after training."""
     def feature(name): return float(features.get(f"{name}__mean", 0.) or 0.)
     q = questionnaire or {}
-    score = {
-        "Social Communication Risk": .45 * feature("p2_autistic_probability") + .25 * (1 - feature("p1_emotion_happy")) + .30 * float(q.get("q_axis_sc", 0)),
-        "Attention Regulation Risk": .40 * feature("p2_autistic_probability") + .30 * (1 - feature("p3_pose_detection_rate")) + .30 * float(q.get("q_axis_ar", 0)),
-        "Speech & Language Risk": .45 * min(1., feature("audio_pause_count") / 10) + .25 * min(1., feature("audio_response_latency_s") / 5) + .30 * float(q.get("q_axis_sl", 0)),
-        "Repetitive Behaviour Risk": .25 * feature("p3_arm_flapping_probability") + .25 * feature("p3_head_banging_probability") + .20 * feature("p3_spinning_probability") + .30 * float(q.get("q_axis_rb", 0)),
+    # A completed all-negative M-CHAT-R is an explicit zero-risk gate requested
+    # for this prototype.  An omitted optional questionnaire does not activate it.
+    if int(q.get("questionnaire_completed", 0)) and float(q.get("mchatr_total", 0) or 0) == 0:
+        return {name: 0.0 for name in ("Social Communication Risk", "Attention Regulation Risk",
+                                       "Speech & Language Risk", "Repetitive Behaviour Risk")}
+    media = {
+        "Social Communication Risk": (.65 * feature("p2_autistic_probability") + .35 * (1 - feature("p1_emotion_happy"))),
+        "Attention Regulation Risk": (.60 * feature("p2_autistic_probability") + .40 * (1 - feature("p3_pose_detection_rate"))),
+        "Speech & Language Risk": (.65 * min(1., feature("audio_pause_count") / 10) + .35 * min(1., feature("audio_response_latency_s") / 5)),
+        "Repetitive Behaviour Risk": (.35 * feature("p3_arm_flapping_probability") + .35 * feature("p3_head_banging_probability") + .30 * feature("p3_spinning_probability")),
     }
+    axes = {"Social Communication Risk": "sc", "Attention Regulation Risk": "ar",
+            "Speech & Language Risk": "sl", "Repetitive Behaviour Risk": "rb"}
+    # The clinically validated questionnaire has 60% weight; media contributes 40%.
+    score = {name: .40 * value + .60 * float(q.get(f"q_axis_{axes[name]}", 0.0) or 0.0)
+             for name, value in media.items()}
     return {name: round(float(np.clip(value, 0, 1)), 3) for name, value in score.items()}
